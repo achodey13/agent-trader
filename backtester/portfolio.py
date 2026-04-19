@@ -1,5 +1,5 @@
 """
-Portfolio — Cash, positions, P&L tracking.
+Portfolio - Cash, positions, P&L tracking.
 
 Tracks cash balance, token positions per market, and handles settlement payouts.
 """
@@ -147,7 +147,7 @@ class Portfolio:
                 no_value = pos.no_shares * view.no_price
                 total += yes_value + no_value
             else:
-                # No market data — value at cost basis
+                # No market data - value at cost basis
                 total += pos.cost_basis
 
         return total

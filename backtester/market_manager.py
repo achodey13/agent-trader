@@ -1,5 +1,5 @@
 """
-Market Manager — Tracks active markets, lifecycle state, and settlements.
+Market Manager - Tracks active markets, lifecycle state, and settlements.
 
 State machine per market: UPCOMING -> ACTIVE -> SETTLED
 """
@@ -67,7 +67,7 @@ class MarketManager:
                 if current_ts < lc.end_ts:
                     lc.status = MarketStatus.ACTIVE
                 else:
-                    # Already past end — settle immediately
+                    # Already past end - settle immediately
                     lc.status = MarketStatus.SETTLED
                     if slug in self._settlements:
                         self._settled_this_tick.append(self._settlements[slug])

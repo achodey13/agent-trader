@@ -1,5 +1,5 @@
 """
-Data Loader — Reads SQLite/CSV/Parquet into a unified timeline.
+Data Loader - Reads SQLite/CSV/Parquet into a unified timeline.
 
 Reuses loading patterns from collectors/export_data.py but builds structures
 optimized for the backtest engine: a sorted timeline of ticks, a settlement
@@ -78,12 +78,18 @@ class TickData:
     # Last order book timestamp per market (for staleness check)
     book_timestamps: dict[str, int] = field(default_factory=dict)
 
-    # Binance
+    # Binance reference prices per asset.
     btc_mid: float = 0.0
     btc_spread: float = 0.0
+    eth_mid: float = 0.0
+    eth_spread: float = 0.0
+    sol_mid: float = 0.0
+    sol_spread: float = 0.0
 
-    # Chainlink
+    # Chainlink oracle prices per asset (source of truth for settlement).
     chainlink_btc: float = 0.0
+    chainlink_eth: float = 0.0
+    chainlink_sol: float = 0.0
 
 
 # ── Raw data loaders (adapted from export_data.py) ──────────────────────────
@@ -201,7 +207,7 @@ def load_binance_lob(binance_dir: Path) -> pd.DataFrame:
         import pyarrow as pa
         import pyarrow.parquet as pq
     except ImportError:
-        logger.warning("pyarrow not installed — skipping Binance LOB data")
+        logger.warning("pyarrow not installed - skipping Binance LOB data")
         return pd.DataFrame()
 
     tables = []
@@ -218,7 +224,7 @@ def load_binance_lob(binance_dir: Path) -> pd.DataFrame:
     df = combined.to_pandas()
     df["ts_sec"] = df["timestamp_us"] // 1_000_000
 
-    # Classify asset by price magnitude — the three assets (BTC, ETH, SOL)
+    # Classify asset by price magnitude - the three assets (BTC, ETH, SOL)
     # are orders of magnitude apart so this is unambiguous.
     if "bid_price_1" in df.columns:
         df["asset"] = df["bid_price_1"].apply(
@@ -555,7 +561,7 @@ def build_timeline(
             timeline=[], lifecycles=[], settlements={}, start_ts=0, end_ts=0
         )
 
-    # Filter to requested assets — eliminates SOL/ETH work when strategy is BTC-only
+    # Filter to requested assets - eliminates SOL/ETH work when strategy is BTC-only
     if assets:
         asset_set = {a.upper() for a in assets}
         prices_df = prices_df[prices_df["market_slug"].apply(
@@ -586,40 +592,63 @@ def build_timeline(
     global_start = int(prices_df["ts_sec"].min())
     global_end = int(prices_df["ts_sec"].max())
 
-    # Pre-aggregate Binance to per-second (BTC only).
-    # The Parquet schema has bid_price_1/ask_price_1 (no `mid_price` column),
-    # so derive mid/spread on the fly.
-    binance_by_sec: dict[int, tuple[float, float]] = {}
+    # Aggregate Binance to per-second, one dict per asset.
+    # Mid and spread are derived on the fly from bid_price_1/ask_price_1
+    # since the Parquet schema does not carry a mid_price column. The
+    # "asset" column is set upstream in load_binance_lob.
+    binance_by_sec: dict[str, dict[int, tuple[float, float]]] = {
+        "BTC": {}, "ETH": {}, "SOL": {},
+    }
     if not binance_df.empty and "bid_price_1" in binance_df.columns and "ask_price_1" in binance_df.columns:
-        btc_lob = binance_df[binance_df["asset"] == "BTC"] if "asset" in binance_df.columns else binance_df
-        if not btc_lob.empty:
-            btc_lob = btc_lob.assign(
-                _mid=(btc_lob["bid_price_1"] + btc_lob["ask_price_1"]) / 2,
-                _spread=(btc_lob["ask_price_1"] - btc_lob["bid_price_1"]),
+        has_asset_col = "asset" in binance_df.columns
+        for asset in ("BTC", "ETH", "SOL"):
+            asset_lob = binance_df[binance_df["asset"] == asset] if has_asset_col else (
+                binance_df if asset == "BTC" else binance_df.iloc[0:0]
             )
-            binance_agg = btc_lob.groupby("ts_sec").agg(
-                btc_mid=("_mid", "last"),
-                btc_spread=("_spread", "last"),
+            if asset_lob.empty:
+                continue
+            asset_lob = asset_lob.assign(
+                _mid=(asset_lob["bid_price_1"] + asset_lob["ask_price_1"]) / 2,
+                _spread=(asset_lob["ask_price_1"] - asset_lob["bid_price_1"]),
             )
-            # Vectorised dict build — iterrows is ~20x slower at this scale.
-            binance_by_sec = dict(
+            agg = asset_lob.groupby("ts_sec").agg(
+                mid=("_mid", "last"),
+                spread=("_spread", "last"),
+            )
+            binance_by_sec[asset] = dict(
                 zip(
-                    binance_agg.index.astype(int).tolist(),
+                    agg.index.astype(int).tolist(),
                     zip(
-                        binance_agg["btc_mid"].astype(float).tolist(),
-                        binance_agg["btc_spread"].astype(float).tolist(),
+                        agg["mid"].astype(float).tolist(),
+                        agg["spread"].astype(float).tolist(),
                     ),
                 )
             )
 
-    # Pre-aggregate Chainlink to per-second
-    chainlink_by_sec: dict[int, float] = {}
-    if not chainlink_df.empty:
-        cl_agg = chainlink_df.groupby("ts_sec").agg(chainlink_btc=("price", "last"))
-        chainlink_by_sec = dict(
+    # Aggregate Chainlink to per-second, one dict per asset.
+    # Filter by symbol before groupby so `.last()` only sees rows for a
+    # single asset within each bucket.
+    chainlink_by_sec: dict[str, dict[int, float]] = {"BTC": {}, "ETH": {}, "SOL": {}}
+    if not chainlink_df.empty and "symbol" in chainlink_df.columns:
+        _symbol_to_asset = {"BTC/USD": "BTC", "ETH/USD": "ETH", "SOL/USD": "SOL"}
+        for sym, asset in _symbol_to_asset.items():
+            sub = chainlink_df[chainlink_df["symbol"] == sym]
+            if sub.empty:
+                continue
+            agg = sub.groupby("ts_sec").agg(price=("price", "last"))
+            chainlink_by_sec[asset] = dict(
+                zip(
+                    agg.index.astype(int).tolist(),
+                    agg["price"].astype(float).tolist(),
+                )
+            )
+    elif not chainlink_df.empty:
+        # Fall back to single-symbol rows (rtds_prices with no symbol column).
+        agg = chainlink_df.groupby("ts_sec").agg(price=("price", "last"))
+        chainlink_by_sec["BTC"] = dict(
             zip(
-                cl_agg.index.astype(int).tolist(),
-                cl_agg["chainlink_btc"].astype(float).tolist(),
+                agg.index.astype(int).tolist(),
+                agg["price"].astype(float).tolist(),
             )
         )
 
@@ -635,7 +664,7 @@ def build_timeline(
             prices_grouped[ts] = bucket
         bucket[slug] = rec
 
-    # Release the prices DataFrame — the grouped dict has everything we need.
+    # Release the prices DataFrame - the grouped dict has everything we need.
     # Without this, pandas holds ~1 GB of row data alive through the JSON-parse
     # step below, causing GC thrashing on OneDrive-synced directories.
     # We rely on refcount-based cleanup; no explicit gc.collect() (scanning
@@ -647,21 +676,19 @@ def build_timeline(
     # Filter books_df to slugs actually in scope. After interval+asset
     # filtering on prices_df, `lifecycles` is the authoritative list of
     # markets the engine will see. Books for any other slug are wasted
-    # parse work. (Previously only --assets was applied here, so filtering
-    # by --intervals didn't give any book-parse speedup.)
+    # parse work.
     if not books_df.empty and "market_slug" in books_df.columns:
         lifecycle_slugs = {lc.market_slug for lc in lifecycles}
         if lifecycle_slugs:
             books_df = books_df[books_df["market_slug"].isin(lifecycle_slugs)]
 
-    # Pre-index order books by slug for efficient lookup.
-    # Build pre-parsed book snapshots indexed by (slug, ts) for O(1) forward-fill.
-    # CRITICAL: use groupby() once, not 8,466 linear-scan filters.
+    # Build pre-parsed book snapshots indexed by (slug, ts) for O(1)
+    # forward-fill. Use one groupby() pass rather than scanning the frame
+    # per slug - the per-slug approach is O(N*S) on 8k+ slugs.
     #
-    # A pickle cache was tried and removed — 1.75M dataclass instances balloon
-    # to ~6 GB pickled (Python object overhead), so the cache is slower than
-    # just re-parsing. The memory cleanup (del/gc above) keeps cold parsing
-    # close to its raw CPU cost (~90s for the full train set).
+    # No pickle cache: 1.75M dataclass instances pickle to ~6 GB of Python
+    # object overhead, so re-parsing on cold start is faster. The del/gc
+    # cleanup above keeps cold-parse near raw CPU cost (~90s on full train).
     import bisect
     books_by_slug: dict[str, Any] = {}
     book_ts_index: dict[str, list[int]] = {}
@@ -718,8 +745,8 @@ def build_timeline(
         finally:
             gc.enable()
 
-        # Release the raw books DataFrame — parsed snapshots have all we need.
-        # NO explicit gc.collect() — scanning the ~9M book-level objects
+        # Release the raw books DataFrame - parsed snapshots have all we need.
+        # NO explicit gc.collect() - scanning the ~9M book-level objects
         # we just created would cost 2+ minutes and saves nothing material.
         del books_df, slim
 
@@ -757,11 +784,13 @@ def build_timeline(
     end_idx = 0
     active_slugs: set[str] = set()
 
-    # Track last known values for forward-filling
-    last_btc_mid = 0.0
-    last_btc_spread = 0.0
-    last_chainlink = 0.0
-    last_books: dict[str, dict] = {}  # slug -> {yes_book, no_book, book_ts}
+    # Track the last observed value for each asset so we can forward-fill.
+    last_binance: dict[str, tuple[float, float]] = {
+        "BTC": (0.0, 0.0), "ETH": (0.0, 0.0), "SOL": (0.0, 0.0),
+    }
+    last_chainlink_by_asset: dict[str, float] = {"BTC": 0.0, "ETH": 0.0, "SOL": 0.0}
+    # Map of slug -> {yes_book, no_book, book_ts}.
+    last_books: dict[str, dict] = {}
 
     progress_step = max(total_secs // 10, 1)
 
@@ -794,7 +823,7 @@ def build_timeline(
                     last_books[slug] = snap
 
             if slug in last_books:
-                # Reuse the parsed StoredBook tuple — no per-tick allocation.
+                # Reuse the parsed StoredBook tuple - no per-tick allocation.
                 snap = last_books[slug]
                 tick.order_books[slug] = snap
                 tick.book_timestamps[slug] = snap.book_ts
@@ -816,16 +845,23 @@ def build_timeline(
                     tick.order_books[slug] = snap
                     tick.book_timestamps[slug] = ts
 
-        # Binance BTC (forward-fill)
-        if ts in binance_by_sec:
-            last_btc_mid, last_btc_spread = binance_by_sec[ts]
-        tick.btc_mid = last_btc_mid
-        tick.btc_spread = last_btc_spread
+        # Forward-fill Binance mid and spread for each asset.
+        for asset in ("BTC", "ETH", "SOL"):
+            asset_dict = binance_by_sec[asset]
+            if ts in asset_dict:
+                last_binance[asset] = asset_dict[ts]
+        tick.btc_mid, tick.btc_spread = last_binance["BTC"]
+        tick.eth_mid, tick.eth_spread = last_binance["ETH"]
+        tick.sol_mid, tick.sol_spread = last_binance["SOL"]
 
-        # Chainlink (forward-fill)
-        if ts in chainlink_by_sec:
-            last_chainlink = chainlink_by_sec[ts]
-        tick.chainlink_btc = last_chainlink
+        # Forward-fill the Chainlink oracle price for each asset.
+        for asset in ("BTC", "ETH", "SOL"):
+            asset_dict = chainlink_by_sec[asset]
+            if ts in asset_dict:
+                last_chainlink_by_asset[asset] = asset_dict[ts]
+        tick.chainlink_btc = last_chainlink_by_asset["BTC"]
+        tick.chainlink_eth = last_chainlink_by_asset["ETH"]
+        tick.chainlink_sol = last_chainlink_by_asset["SOL"]
 
         timeline.append(tick)
 

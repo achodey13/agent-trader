@@ -1,13 +1,23 @@
 """
-Fair Value — Black-Scholes model adapted from appendix/btc_fair_value_estimator.py.
+Fair Value - Black-Scholes model adapted from appendix/btc_fair_value_estimator.py.
 
 Computes P(YES) = N(d2) using realized volatility and trades when the market
 price diverges from the model price by more than a threshold.
+
+Supports BTC, ETH, and SOL markets. Each market is routed to its matching
+Chainlink oracle via `_asset_from_slug` and uses a per-asset 15-minute
+volatility estimate, so the d2 inputs are always self-consistent.
 """
 
 import math
 
+from backtester.data_loader import _asset_from_slug
 from backtester.strategy import BaseStrategy, Fill, MarketState, Order, Side, Token
+
+
+# Rough 15-minute realized volatility per asset. Values are illustrative;
+# a production strategy should calibrate these from recent returns.
+_DEFAULT_VOL_15M: dict[str, float] = {"BTC": 0.005, "ETH": 0.007, "SOL": 0.012}
 
 
 def _standard_normal_cdf(x: float) -> float:
@@ -16,13 +26,13 @@ def _standard_normal_cdf(x: float) -> float:
 
 
 def _compute_fair_prob(
-    btc_current: float,
-    btc_open: float,
+    spot_current: float,
+    spot_open: float,
     vol_15m: float,
     time_remaining_frac: float,
 ) -> float:
     """Compute Black-Scholes P(YES) = N(d2)."""
-    if btc_open <= 0 or btc_current <= 0:
+    if spot_open <= 0 or spot_current <= 0:
         return 0.5
 
     tau = max(time_remaining_frac, 0.001)
@@ -30,9 +40,9 @@ def _compute_fair_prob(
     sigma_sqrt_tau = sigma * math.sqrt(tau)
 
     if sigma_sqrt_tau < 1e-8:
-        return 0.99 if btc_current >= btc_open else 0.01
+        return 0.99 if spot_current >= spot_open else 0.01
 
-    log_moneyness = math.log(btc_current / btc_open)
+    log_moneyness = math.log(spot_current / spot_open)
     d2 = log_moneyness / sigma_sqrt_tau - sigma_sqrt_tau / 2.0
 
     prob = _standard_normal_cdf(d2)
@@ -49,30 +59,50 @@ class FairValue(BaseStrategy):
 
     def __init__(
         self,
-        vol_15m: float = 0.005,  # ~0.5% 15-min vol (typical BTC)
-        threshold: float = 0.08,  # trade when |fair - market| > 8 cents
+        vol_15m: float | dict[str, float] | None = None,
+        threshold: float = 0.08,  # Trade when |fair - market| > 8 cents.
         size: float = 30.0,
     ):
-        self.vol_15m = vol_15m
+        # Accept None (use defaults), a per-asset dict, or a single float
+        # applied uniformly to BTC, ETH, and SOL.
+        if vol_15m is None:
+            self.vol_by_asset = dict(_DEFAULT_VOL_15M)
+        elif isinstance(vol_15m, dict):
+            self.vol_by_asset = {**_DEFAULT_VOL_15M, **vol_15m}
+        else:
+            self.vol_by_asset = {a: float(vol_15m) for a in ("BTC", "ETH", "SOL")}
         self.threshold = threshold
         self.size = size
-        self._btc_open: dict[str, float] = {}  # slug -> open BTC price
+        # Map of slug -> oracle price captured at the market's first tick.
+        self._spot_open: dict[str, float] = {}
+
+    def _oracle_for(self, state: MarketState, asset: str) -> float:
+        if asset == "BTC":
+            return state.chainlink_btc
+        if asset == "ETH":
+            return state.chainlink_eth
+        if asset == "SOL":
+            return state.chainlink_sol
+        return 0.0
 
     def on_tick(self, state: MarketState) -> list[Order]:
         orders = []
 
-        if state.chainlink_btc <= 0:
-            return orders
-
         for slug, market in state.markets.items():
-            # Record BTC price at market start (first tick we see it)
-            if slug not in self._btc_open:
-                self._btc_open[slug] = state.chainlink_btc
+            asset = _asset_from_slug(slug)
+            spot = self._oracle_for(state, asset)
+            if spot <= 0:
+                continue
 
-            btc_open = self._btc_open[slug]
+            # Record the oracle price the first tick we see this market.
+            if slug not in self._spot_open:
+                self._spot_open[slug] = spot
+
+            spot_open = self._spot_open[slug]
             fair = _compute_fair_prob(
-                state.chainlink_btc, btc_open,
-                self.vol_15m, market.time_remaining_frac,
+                spot, spot_open,
+                self.vol_by_asset.get(asset, 0.005),
+                market.time_remaining_frac,
             )
             market_mid = market.yes_price
 
@@ -82,7 +112,7 @@ class FairValue(BaseStrategy):
             delta = fair - market_mid
 
             if delta > self.threshold and market.yes_ask > 0:
-                # Market is cheap — buy YES
+                # Market is cheap relative to fair value - buy YES.
                 if state.cash >= self.size * market.yes_ask:
                     orders.append(Order(
                         market_slug=slug,
@@ -93,7 +123,7 @@ class FairValue(BaseStrategy):
                     ))
 
             elif delta < -self.threshold and market.no_ask > 0:
-                # Market is rich — buy NO
+                # Market is rich relative to fair value - buy NO.
                 if state.cash >= self.size * market.no_ask:
                     orders.append(Order(
                         market_slug=slug,

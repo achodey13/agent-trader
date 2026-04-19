@@ -10,6 +10,7 @@ import pytest
 pd = pytest.importorskip("pandas")
 
 from backtester.data_loader import (
+    build_timeline,
     compute_settlements,
     load_chainlink_prices,
     load_market_outcomes,
@@ -202,3 +203,96 @@ class TestLoadMarketOutcomes:
         conn.close()
         outcomes = load_market_outcomes(db_path)
         assert outcomes == {"slug-1": "YES"}
+
+
+class TestChainlinkPerAssetAggregation:
+    """Oracle prices must stay in their own per-asset slot.
+
+    The fixture inserts BTC, ETH, and SOL rows at every second with ETH and
+    SOL arriving last within the second. A per-asset aggregation must keep
+    `chainlink_btc` in the BTC range (~$60k) regardless of row ordering;
+    any cross-asset leak would be caught by the range asserts below.
+    """
+
+    @staticmethod
+    def _make_data_dir(tmp_path):
+        """Build a minimal polymarket.db with empty books and binance dirs."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        books_dir = data_dir / "polymarket_books"
+        books_dir.mkdir()
+        binance_dir = data_dir / "binance_lob"
+        binance_dir.mkdir()
+
+        db_path = data_dir / "polymarket.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE market_prices (
+                id INTEGER PRIMARY KEY,
+                timestamp_us INTEGER,
+                interval TEXT,
+                market_slug TEXT,
+                condition_id TEXT,
+                yes_token_id TEXT, no_token_id TEXT,
+                yes_price REAL, no_price REAL,
+                yes_bid REAL, yes_ask REAL,
+                no_bid REAL, no_ask REAL,
+                volume REAL, liquidity REAL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE rtds_prices (
+                id INTEGER PRIMARY KEY,
+                timestamp_us INTEGER,
+                source TEXT,
+                symbol TEXT,
+                price REAL,
+                raw_payload TEXT
+            )
+        """)
+
+        # One BTC 5m market covering ts 1_700_000_000 .. +300.
+        slug = "btc-updown-5m-1700000000"
+        for i in range(0, 301, 30):
+            ts_us = (1_700_000_000 + i) * 1_000_000
+            conn.execute(
+                "INSERT INTO market_prices VALUES (NULL, ?, '5m', ?, '', '', '', 0.5, 0.5, 0.49, 0.51, 0.49, 0.51, 0, 0)",
+                (ts_us, slug),
+            )
+
+        # Insert BTC first, then ETH, then SOL within each second so that
+        # a naive `groupby("ts_sec").last()` would pick the SOL row.
+        for i in range(0, 301):
+            ts_us = (1_700_000_000 + i) * 1_000_000
+            conn.execute(
+                "INSERT INTO rtds_prices VALUES (NULL, ?, 'chainlink', 'BTC/USD', ?, '')",
+                (ts_us, 60_000.0 + i),
+            )
+            conn.execute(
+                "INSERT INTO rtds_prices VALUES (NULL, ?, 'chainlink', 'ETH/USD', ?, '')",
+                (ts_us + 10, 3_400.0 + i * 0.1),
+            )
+            conn.execute(
+                "INSERT INTO rtds_prices VALUES (NULL, ?, 'chainlink', 'SOL/USD', ?, '')",
+                (ts_us + 20, 180.0 + i * 0.01),
+            )
+        conn.commit()
+        conn.close()
+        return data_dir
+
+    def test_chainlink_per_asset_ranges(self, tmp_path):
+        data_dir = self._make_data_dir(tmp_path)
+        bt = build_timeline(data_dir=data_dir, intervals=["5m"])
+
+        assert bt.timeline, "timeline should be non-empty"
+
+        for tick in bt.timeline:
+            assert tick.chainlink_btc > 10_000, (
+                f"chainlink_btc out of BTC range: got {tick.chainlink_btc} at ts={tick.ts_sec}"
+            )
+            assert 100 < tick.chainlink_eth < 20_000, (
+                f"chainlink_eth out of ETH range: {tick.chainlink_eth}"
+            )
+            assert 5 < tick.chainlink_sol < 1_000, (
+                f"chainlink_sol out of SOL range: {tick.chainlink_sol}"
+            )

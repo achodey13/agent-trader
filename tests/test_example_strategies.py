@@ -1,4 +1,4 @@
-"""Tests for example strategies — integration tests running on synthetic data."""
+"""Tests for example strategies - integration tests running on synthetic data."""
 
 import pytest
 

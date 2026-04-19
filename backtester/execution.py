@@ -1,5 +1,5 @@
 """
-Execution Engine — Order matching against recorded order books.
+Execution Engine - Order matching against recorded order books.
 
 Handles validation, latency simulation, staleness checks, and walk-the-book
 fill logic for realistic backtesting.
@@ -52,11 +52,11 @@ class ExecutionEngine:
     Handles order validation, queuing, and execution against recorded books.
 
     Pipeline:
-    1. Validate — market is ACTIVE, sufficient cash, within position limits
-    2. Latency — orders submitted at tick T fill at tick T+1
-    3. Staleness — reject if last order book snapshot > 5s old
-    4. Walk the book — consume recorded order book levels
-    5. Book depletion — multiple orders on same tick see depleted book
+    1. Validate - market is ACTIVE, sufficient cash, within position limits
+    2. Latency - orders submitted at tick T fill at tick T+1
+    3. Staleness - reject if last order book snapshot > 5s old
+    4. Walk the book - consume recorded order book levels
+    5. Book depletion - multiple orders on same tick see depleted book
     """
 
     def __init__(self):
@@ -87,7 +87,7 @@ class ExecutionEngine:
                 rej = RejectedOrder(order=order, reason=reason)
                 rejected.append(rej)
                 self._rejected.append(rej)
-                logger.debug(f"Order rejected: {reason} — {order}")
+                logger.debug(f"Order rejected: {reason} - {order}")
                 continue
 
             pending = PendingOrder(

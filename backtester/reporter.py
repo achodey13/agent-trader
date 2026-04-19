@@ -1,5 +1,5 @@
 """
-Reporter — JSON/CSV/terminal output for backtest results.
+Reporter - JSON/CSV/terminal output for backtest results.
 """
 
 from __future__ import annotations

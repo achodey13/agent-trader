@@ -8,7 +8,7 @@ from tests.conftest import MARKET_5M_SLUG, MARKET_15M_SLUG
 
 
 class DoNothingStrategy(BaseStrategy):
-    """Strategy that does nothing — baseline."""
+    """Strategy that does nothing - baseline."""
     def on_tick(self, state: MarketState) -> list[Order]:
         return []
 
@@ -125,7 +125,7 @@ class TestBacktestEngine:
 
 
 class ErrorStrategy(BaseStrategy):
-    """Strategy that raises errors — should not crash engine."""
+    """Strategy that raises errors - should not crash engine."""
     def on_tick(self, state: MarketState) -> list[Order]:
         raise ValueError("on_tick error")
 

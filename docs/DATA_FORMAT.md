@@ -134,7 +134,7 @@ One file per asset: `btcusdt.parquet`, `ethusdt.parquet`, `solusdt.parquet`. Eac
 | `bid_price_1` .. `bid_price_10` | float64 | Bid prices, level 1 = best (highest) bid |
 | `bid_vol_1` .. `bid_vol_10` | float64 | Bid sizes in base-asset units |
 
-Snappy compression. Total of 44 columns per row (3 metadata + 40 LOB features — the "DeepLOB" format).
+Snappy compression. Total of 44 columns per row (3 metadata + 40 LOB features - the "DeepLOB" format).
 
 **Example load:**
 ```python

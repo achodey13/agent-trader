@@ -1,5 +1,5 @@
 """
-CLI Runner — Run a single strategy backtest.
+CLI Runner - Run a single strategy backtest.
 
 Usage:
     python -m backtester.runner --strategy backtester/examples/buy_and_hold.py

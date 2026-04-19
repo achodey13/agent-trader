@@ -1,5 +1,5 @@
 """
-Scoring — P&L, Sharpe, drawdown, and competition score computation.
+Scoring - P&L, Sharpe, drawdown, and competition score computation.
 """
 
 from __future__ import annotations

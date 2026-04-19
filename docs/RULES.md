@@ -4,12 +4,12 @@
 
 - **Starting cash:** $10,000 USDC (simulated).
 - No deposits or withdrawals during the run.
-- Only the final portfolio value counts — see [SCORING.md](SCORING.md).
+- Only the final portfolio value counts - see [SCORING.md](SCORING.md).
 
 ## 2. Position limits
 
 - **Max 500 shares per token per market.** YES and NO are separate tokens, so the practical max per market is 500 YES + 500 NO = 1,000 shares combined.
-- If you submit an order that would exceed this limit, it is **partially filled** up to the cap or **rejected** depending on the engine's constraint — inspect `on_fill` vs. order-rejection logging.
+- If you submit an order that would exceed this limit, it is **partially filled** up to the cap or **rejected** depending on the engine's constraint - inspect `on_fill` vs. order-rejection logging.
 
 ## 3. No short selling
 
@@ -58,7 +58,7 @@ Your strategy may import from:
 - **`numpy`**
 - **`pandas`**
 - **`scipy`**
-- **`backtester`** (only the public symbols — `BaseStrategy`, `MarketState`, `MarketView`, `Order`, `Side`, `Token`, `Fill`, `Settlement`, `OrderBookSnapshot`, `OrderBookLevel`, `PositionView`)
+- **`backtester`** (only the public symbols - `BaseStrategy`, `MarketState`, `MarketView`, `Order`, `Side`, `Token`, `Fill`, `Settlement`, `OrderBookSnapshot`, `OrderBookLevel`, `PositionView`)
 
 Any other import may cause disqualification.
 
@@ -79,7 +79,7 @@ Strategies that violate these will be disqualified before scoring.
 
 See [SCORING.md](SCORING.md) for the ranking formula.
 
-## 12. Dev-loop flags (not for submission — for your iteration speed only)
+## 12. Dev-loop flags (not for submission - for your iteration speed only)
 
 `run_backtest.py` accepts these optional flags that **reduce which data gets loaded**:
 
@@ -89,4 +89,4 @@ See [SCORING.md](SCORING.md) for the ranking formula.
 | `--assets A [B ...]` | `--assets BTC` | Load only the listed assets (`BTC`, `ETH`, `SOL`) |
 | `--intervals I [J ...]` | `--intervals 5m` | Load only the listed intervals (`5m`, `15m`, `hourly`) |
 
-Final scoring on the held-out test set is **always unfiltered** — your strategy is evaluated on every market across every interval and every asset. These flags are only for speeding up your own iteration on train/validation.
+Final scoring on the held-out test set is **always unfiltered** - your strategy is evaluated on every market across every interval and every asset. These flags are only for speeding up your own iteration on train/validation.

@@ -1,5 +1,5 @@
 """
-Strategy Interface — What participants implement.
+Strategy Interface - What participants implement.
 
 Contains all dataclasses (MarketState, Order, Fill, etc.) and the BaseStrategy ABC.
 Participants subclass BaseStrategy and implement on_tick().
@@ -117,7 +117,7 @@ class OrderBookSnapshot(NamedTuple):
         The CSV source writes bids descending and asks ascending already, so
         we trust the on-disk order and skip the sort. Verified against the
         hackathon bundles. If a caller hands us unsorted JSON, the caller
-        must sort first — this matches the live-feed producer contract.
+        must sort first - this matches the live-feed producer contract.
         """
         try:
             raw_bids = _loads(bids_json) if bids_json else []
@@ -177,18 +177,26 @@ class MarketState:
     This is the sole argument to on_tick(). It is frozen (immutable) to
     prevent strategies from modifying engine state.
     """
-    timestamp: int       # unix epoch seconds
-    timestamp_utc: str   # ISO 8601 string
+    timestamp: int       # Unix epoch seconds.
+    timestamp_utc: str   # ISO 8601 string.
 
-    # All active markets
+    # All currently active markets, keyed by slug.
     markets: dict[str, MarketView] = field(default_factory=dict)
 
-    # Underlying asset data
+    # Binance reference prices per asset (top-of-book mid and spread).
     btc_mid: float = 0.0
     btc_spread: float = 0.0
-    chainlink_btc: float = 0.0
+    eth_mid: float = 0.0
+    eth_spread: float = 0.0
+    sol_mid: float = 0.0
+    sol_spread: float = 0.0
 
-    # Read-only portfolio view
+    # Chainlink on-chain oracle prices per asset (used for settlement).
+    chainlink_btc: float = 0.0
+    chainlink_eth: float = 0.0
+    chainlink_sol: float = 0.0
+
+    # Read-only portfolio view.
     cash: float = 0.0
     positions: dict[str, PositionView] = field(default_factory=dict)
     total_portfolio_value: float = 0.0

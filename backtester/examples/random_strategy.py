@@ -1,5 +1,5 @@
 """
-Random Strategy — Makes random trades as a null model.
+Random Strategy - Makes random trades as a null model.
 
 Useful for establishing a baseline: any real strategy should outperform random.
 """

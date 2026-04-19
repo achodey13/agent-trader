@@ -1,5 +1,5 @@
 """
-Arb Scanner — Complete-set arbitrage.
+Arb Scanner - Complete-set arbitrage.
 
 Exploits cases where YES + NO prices sum to less than $1 (buy both sides for
 guaranteed profit at settlement) or more than $1 (sell both sides if held).

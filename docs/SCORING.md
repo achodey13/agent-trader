@@ -4,7 +4,7 @@
 
 - **Primary metric (competition rank):** total P&L in USD over the evaluation period.
 - **Tiebreaker:** annualized Sharpe ratio.
-- **Also reported:** max drawdown, win rate, trade count — for transparency, not ranking.
+- **Also reported:** max drawdown, win rate, trade count - for transparency, not ranking.
 
 Starting cash is **$10,000**. Evaluation is performed on a held-out test dataset that participants do not have access to during the competition.
 
@@ -32,9 +32,9 @@ Higher is better. Ranking is strictly by this number.
 
 | Event | Cash | Shares held | Portfolio value |
 |---|---|---|---|
-| Start | $10,000.00 | — | $10,000.00 |
+| Start | $10,000.00 | - | $10,000.00 |
 | Buy 100 YES at $0.40 | $9,960.00 | 100 YES | $9,960 + 100 × $0.40 = $10,000 (zero slippage) |
-| 5m later: market resolves YES | $10,060.00 | — | $10,060 ($9,960 cash + 100 × $1 payout) |
+| 5m later: market resolves YES | $10,060.00 | - | $10,060 ($9,960 cash + 100 × $1 payout) |
 | Final P&L | | | **+$60.00** |
 
 ---
@@ -83,7 +83,7 @@ for v in values:
         max_dd_pct = dd / peak if peak > 0 else 0
 ```
 
-Lower is safer. Not used for ranking — only for transparency.
+Lower is safer. Not used for ranking - only for transparency.
 
 ---
 
@@ -101,7 +101,7 @@ Not used for ranking. A high win rate with negative P&L means you won many small
 
 ## 5. Total trades, settlements, avg trade P&L (reported)
 
-Informational only — shown in the report so you can sanity-check your strategy's activity level against your expectations.
+Informational only - shown in the report so you can sanity-check your strategy's activity level against your expectations.
 
 ---
 
@@ -165,7 +165,7 @@ The organizer will run the exact same code against the test dataset.
 
 ## 8. What you can do to optimize
 
-1. **Focus on total P&L.** Sharpe only matters if you tie with someone — and ties are unlikely.
+1. **Focus on total P&L.** Sharpe only matters if you tie with someone - and ties are unlikely.
 2. **Watch drawdown.** A strategy that makes $500 but drew down $2,000 midway through the run is fragile. Production scoring uses the full run, so no, you can't just cherry-pick a good period.
 3. **Don't over-trade.** Each trade costs you the spread. A higher trade count with the same P&L means each trade was less edgy.
 4. **Evaluate on `data/validation/` before the deadline.** The test set is held out, but validation is the closest proxy. If your training-set P&L is +$800 and validation is -$100, you are overfitting.

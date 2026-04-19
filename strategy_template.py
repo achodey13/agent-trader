@@ -1,5 +1,5 @@
 """
-Polymarket Crypto Prediction Market — Hackathon Strategy Template
+Polymarket Crypto Prediction Market - Hackathon Strategy Template
 ==================================================================
 
 Welcome! This file is your starting point. Copy it, rename it, and implement
@@ -8,13 +8,13 @@ your trading logic in the `on_tick` method.
 COMPETITION RULES
 -----------------
 - Starting capital: $10,000
-- No short selling — you can only SELL tokens you already own.
+- No short selling - you can only SELL tokens you already own.
 - Max 500 shares per token (YES or NO) per market.
-- 1-second execution latency — orders placed at tick T fill at tick T+1.
+- 1-second execution latency - orders placed at tick T fill at tick T+1.
 - Scoring: Total P&L is the primary metric; Sharpe ratio breaks ties.
 - Submit a single .py file containing your strategy class.
 
-MARKET SELECTION — YOU PICK YOUR SCOPE
+MARKET SELECTION - YOU PICK YOUR SCOPE
 ---------------------------------------
 Your strategy receives ALL active markets across all 3 assets (BTC, SOL, ETH)
 and all 3 intervals (5m, 15m, hourly). It is up to you which of these you
@@ -22,10 +22,10 @@ actually trade.
 
 Some strategies you might build:
 
-  Specialist       — trade one asset, one interval only (e.g. 5m BTC only)
-  Multi-asset      — e.g. all 3 assets, only 5m intervals
-  Multi-interval   — e.g. BTC only, across 5m + 15m + hourly
-  Generalist       — trade everything
+  Specialist       - trade one asset, one interval only (e.g. 5m BTC only)
+  Multi-asset      - e.g. all 3 assets, only 5m intervals
+  Multi-interval   - e.g. BTC only, across 5m + 15m + hourly
+  Generalist       - trade everything
 
 Examples:
 
@@ -52,11 +52,11 @@ Asset detection by slug prefix:
     SOL → slug starts with "sol-" or "solana-"
     ETH → slug starts with "eth-" or "ethereum-"
 
-IMPORTANT — Dev-loop filters vs. submission
+IMPORTANT - Dev-loop filters vs. submission
 -------------------------------------------
 `python run_backtest.py my_strategy.py --assets BTC --intervals 5m` makes the
 backtester load ONLY 5m BTC data, which is much faster for iteration. But the
-final scoring run is UNFILTERED — the judge loads every asset and every
+final scoring run is UNFILTERED - the judge loads every asset and every
 interval. Your submitted strategy must filter markets itself (as above);
 the CLI filter does NOT carry over to scoring.
 
@@ -107,14 +107,14 @@ class MyStrategy(BaseStrategy):
         self.traded_markets: set[str] = set()
 
     # ────────────────────────────────────────────────────────────────────────
-    #  on_tick — REQUIRED
+    #  on_tick - REQUIRED
     # ────────────────────────────────────────────────────────────────────────
 
     def on_tick(self, state: MarketState) -> list[Order]:
         """
         Called every 1-second tick. Return a list of Orders (or an empty list).
 
-        AVAILABLE DATA — ``state: MarketState``
+        AVAILABLE DATA - ``state: MarketState``
         ========================================
 
         Timing
@@ -133,13 +133,21 @@ class MyStrategy(BaseStrategy):
                 .no_shares      float   Number of NO tokens held.
                 .cost_basis     float   Total cost paid to acquire the position.
 
-        BTC Reference Prices
-        ---------------------
+        Reference Prices - per asset (BTC, ETH, SOL)
+        ---------------------------------------------
         state.btc_mid        float   Binance BTCUSDT mid-price (best bid + best ask) / 2.
         state.btc_spread     float   Binance BTCUSDT spread (best ask - best bid).
         state.chainlink_btc  float   Chainlink on-chain oracle BTC price (used for settlement).
+        state.eth_mid        float   Binance ETHUSDT mid-price.
+        state.eth_spread     float   Binance ETHUSDT spread.
+        state.chainlink_eth  float   Chainlink on-chain oracle ETH price.
+        state.sol_mid        float   Binance SOLUSDT mid-price.
+        state.sol_spread     float   Binance SOLUSDT spread.
+        state.chainlink_sol  float   Chainlink on-chain oracle SOL price.
+        Use the oracle that matches your market's asset - pairing an ETH
+        market with state.chainlink_btc will not work.
 
-        Active Markets — ``state.markets: dict[str, MarketView]``
+        Active Markets - ``state.markets: dict[str, MarketView]``
         ----------------------------------------------------------
         Keyed by market_slug. Each MarketView has:
 
@@ -241,7 +249,7 @@ class MyStrategy(BaseStrategy):
         return orders
 
     # ────────────────────────────────────────────────────────────────────────
-    #  on_fill — OPTIONAL
+    #  on_fill - OPTIONAL
     # ────────────────────────────────────────────────────────────────────────
 
     def on_fill(self, fill: Fill) -> None:
@@ -263,7 +271,7 @@ class MyStrategy(BaseStrategy):
         pass  # Replace with your own bookkeeping logic.
 
     # ────────────────────────────────────────────────────────────────────────
-    #  on_settlement — OPTIONAL
+    #  on_settlement - OPTIONAL
     # ────────────────────────────────────────────────────────────────────────
 
     def on_settlement(self, settlement: Settlement) -> None:
@@ -275,7 +283,7 @@ class MyStrategy(BaseStrategy):
         ``settlement`` fields:
             .market_slug      str     Market identifier.
             .interval         str     "5m", "15m", or "hourly".
-            .outcome          Token   Token.YES or Token.NO — the winning side.
+            .outcome          Token   Token.YES or Token.NO - the winning side.
             .start_ts         int     Market start time (unix seconds).
             .end_ts           int     Market end time (unix seconds).
             .chainlink_open   float   Chainlink BTC price at market open.

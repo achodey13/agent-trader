@@ -1,5 +1,5 @@
 """
-Test Fixtures — Synthetic market data for backtester tests.
+Test Fixtures - Synthetic market data for backtester tests.
 
 Creates realistic but deterministic test data:
 - 2 markets (one 5m, one 15m) with known outcomes
@@ -32,6 +32,8 @@ from backtester.strategy import (
 
 BASE_TS = 1_700_000_000  # Some fixed unix timestamp
 BTC_OPEN = 95_000.0
+ETH_OPEN = 3_400.0
+SOL_OPEN = 180.0
 
 # Market 1: 5m market, BTC goes up -> YES wins
 MARKET_5M_SLUG = "btc-updown-5m-1700000000"
@@ -42,6 +44,16 @@ MARKET_5M_END = BASE_TS + 300  # 5 minutes
 MARKET_15M_SLUG = "btc-updown-15m-1700000300"
 MARKET_15M_START = BASE_TS + 300
 MARKET_15M_END = BASE_TS + 1200  # 15 minutes
+
+# Market 3: 5m ETH market. Included so multi-asset strategies see a non-BTC slug.
+MARKET_ETH_SLUG = "eth-updown-5m-1700000000"
+MARKET_ETH_START = BASE_TS
+MARKET_ETH_END = BASE_TS + 300
+
+# Market 4: 5m SOL market.
+MARKET_SOL_SLUG = "sol-updown-5m-1700000000"
+MARKET_SOL_START = BASE_TS
+MARKET_SOL_END = BASE_TS + 300
 
 
 # ── Helper functions ─────────────────────────────────────────────────────────
@@ -191,19 +203,31 @@ def synthetic_backtest_data(
         ts = BASE_TS + i
         tick = TickData(ts_sec=ts)
 
-        # BTC price: rises then falls
+        # Synthesize a BTC path that rises then falls so both YES and NO
+        # outcomes are exercised across the two markets.
         if i <= 300:
-            btc = BTC_OPEN + (i / 300) * 50  # 95000 -> 95050
+            btc = BTC_OPEN + (i / 300) * 50
         else:
-            btc = BTC_OPEN + 50 - ((i - 300) / 900) * 60  # 95050 -> 94990
+            btc = BTC_OPEN + 50 - ((i - 300) / 900) * 60
         tick.btc_mid = btc
         tick.btc_spread = 0.10
         tick.chainlink_btc = btc
 
-        # Market 1: active during 0-300
+        # Populate ETH and SOL every tick so multi-asset strategies can read
+        # the oracles regardless of which markets happen to be active.
+        eth = ETH_OPEN + (i / 1200) * 10
+        sol = SOL_OPEN - (i / 1200) * 2
+        tick.eth_mid = eth
+        tick.eth_spread = 0.05
+        tick.chainlink_eth = eth
+        tick.sol_mid = sol
+        tick.sol_spread = 0.02
+        tick.chainlink_sol = sol
+
+        # Market 1 is active during ts 0-300.
         if i < 300:
             frac = (300 - i) / 300
-            yes_mid = 0.50 + (btc - BTC_OPEN) / BTC_OPEN * 5  # price follows BTC
+            yes_mid = 0.50 + (btc - BTC_OPEN) / BTC_OPEN * 5
             yes_mid = max(0.05, min(0.95, yes_mid))
             no_mid = 1.0 - yes_mid
 
@@ -222,7 +246,7 @@ def synthetic_backtest_data(
             }
             tick.book_timestamps[MARKET_5M_SLUG] = ts
 
-        # Market 2: active during 300-1200
+        # Market 2 is active during ts 300-1200.
         if 300 <= i < 1200:
             frac = (1200 - i) / 900
             yes_mid = 0.50 + (btc - (BTC_OPEN + 50)) / BTC_OPEN * 5

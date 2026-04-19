@@ -1,5 +1,5 @@
 """
-Buy & Hold — Always buy YES on the first available market.
+Buy & Hold - Always buy YES on the first available market.
 
 Baseline strategy: buys YES tokens once per market as soon as it becomes active.
 Useful as a null benchmark to see if directional bias in BTC produces positive P&L.

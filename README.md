@@ -1,10 +1,10 @@
-# DATAHACKS 2026 — BTC/ETH/SOL Prediction Market Hackathon
+# DATAHACKS 2026 - BTC/ETH/SOL Prediction Market Hackathon
 
 Build a trading strategy for binary prediction markets on BTC, ETH, and SOL price direction. Your algorithm trades YES/NO tokens across 5-minute, 15-minute, and hourly markets, buying when you think the market is mispriced and selling when you have an edge.
 
 - **Starting capital:** $10,000
-- **Scoring:** total P&L (primary), Sharpe ratio (tiebreaker) — see [`docs/SCORING.md`](docs/SCORING.md)
-- **Submission:** one `.py` file (details TBD — organizer will announce)
+- **Scoring:** total P&L (primary), Sharpe ratio (tiebreaker) - see [`docs/SCORING.md`](docs/SCORING.md)
+- **Submission:** one `.py` file (details TBD - organizer will announce)
 
 ---
 
@@ -33,20 +33,20 @@ Both backtest commands print a `BACKTEST REPORT` block with P&L, Sharpe ratio, m
 
 ---
 
-## Pick your scope — one market, one asset, or all of them
+## Pick your scope - one market, one asset, or all of them
 
 This is a **strategic design choice**, not a constraint. You can build:
 
-- A **specialist** — e.g. "only 5-minute BTC markets," ignore everything else.
-- A **multi-asset directional bot** — e.g. "all three assets, 5m + 15m only."
-- A **generalist** — all assets, all intervals, using the full cross-market signal.
+- A **specialist** - e.g. "only 5-minute BTC markets," ignore everything else.
+- A **multi-asset directional bot** - e.g. "all three assets, 5m + 15m only."
+- A **generalist** - all assets, all intervals, using the full cross-market signal.
 
 The backtester hands your `on_tick()` method **every active market** every second. Whether you act on one market or all of them is entirely up to your code:
 
 ```python
 def on_tick(self, state: MarketState) -> list[Order]:
     for slug, market in state.markets.items():
-        # Specialist — only trade 5m BTC
+        # Specialist - only trade 5m BTC
         if market.interval != "5m":
             continue
         if not slug.startswith("btc-"):
@@ -56,14 +56,14 @@ def on_tick(self, state: MarketState) -> list[Order]:
 
 **Two layers of filtering are available:**
 
-1. **CLI flags (dev-loop only)** — `--assets BTC --intervals 5m` tells the backtester *not even to load* markets outside your scope. Big speedup while you iterate. See the table below.
-2. **In-strategy filtering (always applies)** — your `on_tick()` can skip markets by slug, interval, or any other property. This is what runs at final scoring.
+1. **CLI flags (dev-loop only)** - `--assets BTC --intervals 5m` tells the backtester *not even to load* markets outside your scope. Big speedup while you iterate. See the table below.
+2. **In-strategy filtering (always applies)** - your `on_tick()` can skip markets by slug, interval, or any other property. This is what runs at final scoring.
 
-**Important:** the final test run is **unfiltered** — the judge's backtest loads every asset and every interval. So even if you use `--assets BTC` during development, your submitted strategy will still *see* ETH and SOL markets. Your code needs to explicitly ignore what it doesn't trade (like the example above); it doesn't get the CLI filter for free at scoring time.
+**Important:** the final test run is **unfiltered** - the judge's backtest loads every asset and every interval. So even if you use `--assets BTC` during development, your submitted strategy will still *see* ETH and SOL markets. Your code needs to explicitly ignore what it doesn't trade (like the example above); it doesn't get the CLI filter for free at scoring time.
 
 ### Speeding up your dev loop
 
-The full training set is 178 hours of 1-second ticks across 8,466 markets. A full backtest takes ~2–3 minutes. If you're only exploring one asset or one interval, **filter it down** — the backtester only parses data for markets you're actually going to trade.
+The full training set is 178 hours of 1-second ticks across 8,466 markets. A full backtest takes ~2–3 minutes. If you're only exploring one asset or one interval, **filter it down** - the backtester only parses data for markets you're actually going to trade.
 
 ```bash
 # Only the last 4 hours of data
@@ -75,7 +75,7 @@ python run_backtest.py my_strategy.py --assets BTC
 # Only 5-minute markets
 python run_backtest.py my_strategy.py --intervals 5m
 
-# All three combined — fastest possible iteration
+# All three combined - fastest possible iteration
 python run_backtest.py my_strategy.py --hours 4 --assets BTC --intervals 5m
 ```
 
@@ -91,7 +91,7 @@ python run_backtest.py my_strategy.py --hours 4 --assets BTC --intervals 5m
 
 (Add ~30–60 s for the engine's own tick loop on top of timeline build for the full run.)
 
-> **Important:** the final test set is scored with **all intervals and all assets** — no filters. Before you submit, always run an unfiltered validation pass:
+> **Important:** the final test set is scored with **all intervals and all assets** - no filters. Before you submit, always run an unfiltered validation pass:
 >
 > ```bash
 > python run_backtest.py my_strategy.py --data data/validation/
@@ -111,15 +111,15 @@ Each market is a **binary prediction market** on the direction of a crypto asset
 
 Markets have three phases in their lifecycle:
 
-1. **UPCOMING** — discovered but not yet tradeable.
-2. **ACTIVE** — open for trading. Your strategy sees them in `state.markets`.
-3. **SETTLED** — resolved. Winning side pays $1, losing side pays $0. `on_settlement()` is called.
+1. **UPCOMING** - discovered but not yet tradeable.
+2. **ACTIVE** - open for trading. Your strategy sees them in `state.markets`.
+3. **SETTLED** - resolved. Winning side pays $1, losing side pays $0. `on_settlement()` is called.
 
 ### Intervals
 
-- **5-minute** — e.g. `btc-updown-5m-1776283500`
-- **15-minute** — e.g. `eth-updown-15m-1776283500`
-- **Hourly** — e.g. `bitcoin-up-or-down-june-1-2025-12pm-et`
+- **5-minute** - e.g. `btc-updown-5m-1776283500`
+- **15-minute** - e.g. `eth-updown-15m-1776283500`
+- **Hourly** - e.g. `bitcoin-up-or-down-june-1-2025-12pm-et`
 
 The slug prefix identifies the asset: `btc-`/`bitcoin-` → BTC, `eth-`/`ethereum-` → ETH, `sol-`/`solana-` → SOL.
 
@@ -150,7 +150,7 @@ class MyStrategy(BaseStrategy):
         return orders
 ```
 
-### `MarketState` — what you get every tick
+### `MarketState` - what you get every tick
 
 | Field | Type | Description |
 |---|---|---|
@@ -161,10 +161,16 @@ class MyStrategy(BaseStrategy):
 | `btc_mid` | `float` | Binance BTCUSDT mid-price |
 | `btc_spread` | `float` | Binance BTCUSDT (ask - bid) |
 | `chainlink_btc` | `float` | Chainlink on-chain BTC oracle (used for settlement) |
+| `eth_mid` | `float` | Binance ETHUSDT mid-price |
+| `eth_spread` | `float` | Binance ETHUSDT (ask - bid) |
+| `chainlink_eth` | `float` | Chainlink on-chain ETH oracle |
+| `sol_mid` | `float` | Binance SOLUSDT mid-price |
+| `sol_spread` | `float` | Binance SOLUSDT (ask - bid) |
+| `chainlink_sol` | `float` | Chainlink on-chain SOL oracle |
 | `markets` | `dict[str, MarketView]` | All currently active markets |
 | `positions` | `dict[str, PositionView]` | Your current holdings |
 
-### `MarketView` — one per active market
+### `MarketView` - one per active market
 
 | Field | Description |
 |---|---|
@@ -174,7 +180,7 @@ class MyStrategy(BaseStrategy):
 | `time_remaining_frac` | 1.0 at open, 0.0 at expiry |
 | `yes_price`, `no_price` | Mid-prices |
 | `yes_bid`, `yes_ask`, `no_bid`, `no_ask` | Top-of-book |
-| `yes_book`, `no_book` | Full `OrderBookSnapshot` — all levels |
+| `yes_book`, `no_book` | Full `OrderBookSnapshot` - all levels |
 
 ### `Order`
 
@@ -191,8 +197,8 @@ Order(
 
 ### Optional callbacks
 
-- `on_fill(fill)` — called when one of your orders executes.
-- `on_settlement(settlement)` — called when a market resolves.
+- `on_fill(fill)` - called when one of your orders executes.
+- `on_settlement(settlement)` - called when a market resolves.
 
 Full field reference lives in [`backtester/strategy.py`](backtester/strategy.py).
 
@@ -253,10 +259,10 @@ python run_backtest.py backtester/examples/fair_value.py
 python run_backtest.py backtester/examples/random_strategy.py
 ```
 
-- **`buy_and_hold.py`** — always buy YES (directional baseline).
-- **`arb_scanner.py`** — complete-set arbitrage: buy both YES and NO whenever `yes_ask + no_ask < $1`.
-- **`fair_value.py`** — Black-Scholes fair-value model using Binance mid-price and historical volatility.
-- **`random_strategy.py`** — random trades (null model for comparison).
+- **`buy_and_hold.py`** - always buy YES (directional baseline).
+- **`arb_scanner.py`** - complete-set arbitrage: buy both YES and NO whenever `yes_ask + no_ask < $1`.
+- **`fair_value.py`** - Black-Scholes fair-value model using Binance mid-price and historical volatility.
+- **`random_strategy.py`** - random trades (null model for comparison).
 
 ---
 
@@ -266,7 +272,7 @@ python run_backtest.py backtester/examples/random_strategy.py
 python -m pytest tests/ -v
 ```
 
-The test suite covers the engine, execution, scoring, portfolio, and examples. ~92 tests — all should pass on a fresh clone.
+The test suite covers the engine, execution, scoring, portfolio, and examples. ~92 tests - all should pass on a fresh clone.
 
 ---
 
@@ -283,7 +289,7 @@ The test suite covers the engine, execution, scoring, portfolio, and examples. ~
 
 ## Submission
 
-**TBD — the organizer will announce the submission mechanism before the deadline.**
+**TBD - the organizer will announce the submission mechanism before the deadline.**
 
 Plan to submit a single file named `{yourteam}_strategy.py` containing one `BaseStrategy` subclass. See [`docs/RULES.md`](docs/RULES.md) for the full submission constraints.
 
@@ -298,7 +304,7 @@ DATAHACKS2026/
 ├── requirements.txt                # numpy, pandas, scipy, pyarrow
 ├── download_data.py                # One-command data download
 ├── run_backtest.py                 # Entry point for backtests
-├── strategy_template.py            # Starter template — copy and edit
+├── strategy_template.py            # Starter template - copy and edit
 ├── backtester/                     # Engine, scoring, strategy ABC
 │   └── examples/                   # 4 example strategies
 ├── notebooks/
@@ -314,4 +320,4 @@ DATAHACKS2026/
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT - see [`LICENSE`](LICENSE).
