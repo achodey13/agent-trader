@@ -65,7 +65,7 @@ P_MAX = 0.85      # cap on P(direction correct) — beyond this we don't trust t
 P_MIN_EDGE = 0.01 # require p − ask ≥ this (else not worth fees + execution)
 
 # ── NEW: Kelly sizing ─────────────────────────────────────────────────
-KELLY_FRACTION = 0.25   # quarter-Kelly
+KELLY_FRACTION = 0.25  # quarter-Kelly
 MIN_SHARES = 1.0
 
 # ── NEW: Tightened price band ─────────────────────────────────────────
@@ -73,8 +73,8 @@ MIN_ASK = 0.50
 MAX_ASK = 0.70
 
 # ── Entry window (unchanged) ──────────────────────────────────────────
-ENTRY_FRAC_MIN = 0.10
-ENTRY_FRAC_MAX = 0.80
+ENTRY_FRAC_MIN = 0.1
+ENTRY_FRAC_MAX = 0.8
 EXIT_MIN_TIME_S = 60
 
 # ── Risk (unchanged) ───────────────────────────────────────────────────
