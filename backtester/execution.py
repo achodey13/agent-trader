@@ -76,13 +76,29 @@ class ExecutionEngine:
         """
         Validate orders and queue valid ones for execution at next tick.
 
+        Pending orders reserve cash and shares until execution. BUY and SELL
+        reservations are independent: an unfilled order cannot fund another
+        order or supply shares that are not owned yet.
+
         Returns (queued, rejected) lists.
         """
         queued: list[PendingOrder] = []
         rejected: list[RejectedOrder] = []
+        reserved_shares: dict[tuple[str, Token, Side], float] = {}
+
+        # Include orders from earlier queue calls that have not executed yet.
+        for pending in self._pending:
+            order = pending.order
+            key = (order.market_slug, order.token, order.side)
+            reserved_shares[key] = reserved_shares.get(key, 0.0) + order.size
+            if order.side == Side.BUY:
+                price = order.limit_price if order.limit_price is not None else 1.0
+                cash -= order.size * price
 
         for order in orders:
-            reason = self._validate_order(order, cash, positions, active_markets)
+            reason = self._validate_order(
+                order, cash, positions, active_markets, reserved_shares
+            )
             if reason:
                 rej = RejectedOrder(order=order, reason=reason)
                 rejected.append(rej)
@@ -98,9 +114,12 @@ class ExecutionEngine:
             queued.append(pending)
             self._pending.append(pending)
 
+            key = (order.market_slug, order.token, order.side)
+            reserved_shares[key] = reserved_shares.get(key, 0.0) + order.size
+
             # Pre-reserve cash for BUY orders to prevent over-spending
             if order.side == Side.BUY:
-                price = order.limit_price if order.limit_price else 1.0
+                price = order.limit_price if order.limit_price is not None else 1.0
                 cash -= order.size * price
 
         return queued, rejected
@@ -162,6 +181,7 @@ class ExecutionEngine:
         cash: float,
         positions: dict,
         active_markets: dict[str, MarketView],
+        reserved_shares: dict[tuple[str, Token, Side], float],
     ) -> str | None:
         """Validate an order. Returns reason string if invalid, None if valid."""
         # Market must be active
@@ -183,6 +203,7 @@ class ExecutionEngine:
             current = 0.0
             if pos:
                 current = pos.yes_shares if order.token == Token.YES else pos.no_shares
+            current += reserved_shares.get((order.market_slug, order.token, Side.BUY), 0.0)
             if current + order.size > MAX_SHARES_PER_TOKEN:
                 return (
                     f"position limit exceeded: {current} + {order.size} > "
@@ -190,7 +211,7 @@ class ExecutionEngine:
                 )
 
             # Cash check (conservative: use limit price or 1.0 for market orders)
-            price = order.limit_price if order.limit_price else 1.0
+            price = order.limit_price if order.limit_price is not None else 1.0
             cost = order.size * price
             if cost > cash:
                 return f"insufficient cash: need ${cost:.2f}, have ${cash:.2f}"
@@ -200,6 +221,7 @@ class ExecutionEngine:
             current = 0.0
             if pos:
                 current = pos.yes_shares if order.token == Token.YES else pos.no_shares
+            current -= reserved_shares.get((order.market_slug, order.token, Side.SELL), 0.0)
             if order.size > current:
                 return (
                     f"cannot sell {order.size} {order.token.value} shares, "
@@ -298,3 +320,4 @@ class ExecutionEngine:
     @property
     def rejected_orders(self) -> list[RejectedOrder]:
         return list(self._rejected)
+

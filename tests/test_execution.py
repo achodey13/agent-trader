@@ -8,6 +8,7 @@ from backtester.execution import (
     ExecutionEngine,
 )
 from backtester.strategy import MarketView, Order, Side, Token
+from backtester.portfolio import Portfolio, Position
 from tests.conftest import (
     MARKET_5M_END,
     MARKET_5M_SLUG,
@@ -107,6 +108,126 @@ class TestOrderValidation:
         assert len(rejected) == 0
 
 
+class TestPendingReservations:
+    @pytest.mark.parametrize("token", [Token.YES, Token.NO])
+    def test_batch_buys_reserve_position_capacity(self, engine, active_market, token):
+        position = Position(MARKET_5M_SLUG, yes_shares=490, no_shares=490)
+        orders = [Order(MARKET_5M_SLUG, token, Side.BUY, 10, 0.55) for _ in range(2)]
+
+        queued, rejected = engine.queue_orders(
+            orders, 100, 10000.0, {MARKET_5M_SLUG: position}, active_market
+        )
+
+        assert len(queued) == 1
+        assert len(rejected) == 1
+        assert "position limit" in rejected[0].reason
+
+    @pytest.mark.parametrize("token", [Token.YES, Token.NO])
+    def test_batch_sells_cannot_sell_the_same_shares_twice(self, engine, active_market, token):
+        portfolio = Portfolio()
+        position = portfolio.get_position(MARKET_5M_SLUG)
+        position.yes_shares = position.no_shares = 50
+        orders = [Order(MARKET_5M_SLUG, token, Side.SELL, size, 0.40) for size in (30, 30, 20)]
+
+        queued, rejected = engine.queue_orders(
+            orders, 100, portfolio.cash, portfolio.positions, active_market
+        )
+
+        assert [pending.order.size for pending in queued] == [30, 20]
+        assert len(rejected) == 1
+        assert "cannot sell" in rejected[0].reason
+        fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
+        for fill in fills:
+            portfolio.apply_fill(fill)
+        assert sum(fill.size for fill in fills) == 50
+        assert (position.yes_shares if token == Token.YES else position.no_shares) == 0
+
+    @pytest.mark.parametrize("side", [Side.BUY, Side.SELL])
+    def test_separate_queue_calls_preserve_share_reservations(self, engine, active_market, side):
+        owned = 490 if side == Side.BUY else 10
+        positions = {MARKET_5M_SLUG: Position(MARKET_5M_SLUG, yes_shares=owned)}
+        order = Order(MARKET_5M_SLUG, Token.YES, side, 10, 0.55)
+        engine.queue_orders([order], 100, 10000.0, positions, active_market)
+
+        queued, rejected = engine.queue_orders([order], 100, 10000.0, positions, active_market)
+
+        assert queued == []
+        assert len(rejected) == 1
+
+    def test_yes_and_no_have_separate_capacity(self, engine, active_market):
+        orders = [Order(MARKET_5M_SLUG, token, Side.BUY, 500, 0.55) for token in Token]
+        queued, rejected = engine.queue_orders(orders, 100, 10000.0, {}, active_market)
+
+        assert len(queued) == 2
+        assert rejected == []
+
+    def test_pending_sell_does_not_free_buy_capacity(self, engine, active_market):
+        positions = {MARKET_5M_SLUG: Position(MARKET_5M_SLUG, yes_shares=500)}
+        orders = [
+            Order(MARKET_5M_SLUG, Token.YES, Side.SELL, 20, 0.60),
+            Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 20, 0.55),
+        ]
+        queued, rejected = engine.queue_orders(orders, 100, 10000.0, positions, active_market)
+
+        assert [pending.order.side for pending in queued] == [Side.SELL]
+        assert len(rejected) == 1
+        assert "position limit" in rejected[0].reason
+
+    def test_pending_buy_does_not_authorize_a_sell(self, engine, active_market):
+        orders = [
+            Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 20, 0.50),
+            Order(MARKET_5M_SLUG, Token.YES, Side.SELL, 20, 0.40),
+        ]
+        queued, rejected = engine.queue_orders(orders, 100, 10000.0, {}, active_market)
+
+        assert [pending.order.side for pending in queued] == [Side.BUY]
+        assert len(rejected) == 1
+        assert "cannot sell" in rejected[0].reason
+
+    def test_separate_queue_calls_preserve_cash_reservations(self, engine, active_market):
+        order = Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 10, 0.55)
+        engine.queue_orders([order], 100, 10.0, {}, active_market)
+        queued, rejected = engine.queue_orders([order], 100, 10.0, {}, active_market)
+
+        assert queued == []
+        assert len(rejected) == 1
+        assert "insufficient cash" in rejected[0].reason
+
+    def test_rejected_execution_releases_share_and_cash_reservations(self, engine, active_market):
+        engine.queue_orders(
+            [Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 500, 0.50)],
+            100, 300.0, {}, active_market,
+        )
+        assert engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101}) == []
+
+        queued, rejected = engine.queue_orders(
+            [Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 500, 0.55)],
+            101, 300.0, {}, active_market,
+        )
+
+        assert len(queued) == 1
+        assert rejected == []
+
+    def test_partial_fill_releases_unfilled_reservation(self, engine, active_market):
+        portfolio = Portfolio()
+        engine.queue_orders(
+            [Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 500, 0.52)],
+            100, portfolio.cash, portfolio.positions, active_market,
+        )
+        fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
+        assert len(fills) == 1
+        assert fills[0].size == 100
+        portfolio.apply_fill(fills[0])
+
+        queued, rejected = engine.queue_orders(
+            [Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 400, 0.55)],
+            101, portfolio.cash, portfolio.positions, active_market,
+        )
+
+        assert len(queued) == 1
+        assert rejected == []
+
+
 class TestExecution:
     def test_latency(self, engine, active_market):
         """Orders at tick T should not fill until tick T+1."""
@@ -201,3 +322,4 @@ class TestExecution:
         fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
         assert len(fills) == 1
         assert fills[0].avg_price == 0.48  # best bid
+
