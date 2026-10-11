@@ -8,6 +8,7 @@ fill logic for realistic backtesting.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 
 from .strategy import (
@@ -188,14 +189,14 @@ class ExecutionEngine:
         if order.market_slug not in active_markets:
             return f"market {order.market_slug} not active"
 
-        # Size must be positive
-        if order.size <= 0:
-            return f"invalid size: {order.size}"
+        # A NaN fails ordered comparisons; infinity is not a valid quantity.
+        if not 0 < order.size < math.inf:
+            return f"invalid size: {order.size} (must be finite and positive)"
 
         # Limit price must be valid if set
         if order.limit_price is not None:
-            if order.limit_price <= 0 or order.limit_price >= 1:
-                return f"invalid limit price: {order.limit_price} (must be 0 < p < 1)"
+            if not 0 < order.limit_price < 1:
+                return f"invalid limit price: {order.limit_price} (must be finite and 0 < p < 1)"
 
         # Position limits
         pos = positions.get(order.market_slug)

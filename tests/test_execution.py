@@ -1,5 +1,7 @@
 """Tests for execution module."""
 
+import math
+
 import pytest
 
 from backtester.execution import (
@@ -72,6 +74,70 @@ class TestOrderValidation:
         _, rejected = engine.queue_orders([order], 100, 10000.0, {}, active_market)
         assert len(rejected) == 1
         assert "invalid limit price" in rejected[0].reason
+
+    @pytest.mark.parametrize("side", [Side.BUY, Side.SELL])
+    @pytest.mark.parametrize("size", [float("nan"), float("inf"), float("-inf")])
+    def test_nonfinite_size_does_not_poison_later_orders(self, engine, active_market, side, size):
+        portfolio = Portfolio(starting_cash=5.5)
+        position = portfolio.get_position(MARKET_5M_SLUG)
+        position.yes_shares = 490 if side == Side.BUY else 10
+        limit = 0.55 if side == Side.BUY else 0.40
+        invalid = Order(MARKET_5M_SLUG, Token.YES, side, size, limit)
+        valid = Order(MARKET_5M_SLUG, Token.YES, side, 10, limit)
+
+        queued, rejected = engine.queue_orders(
+            [invalid, valid], 100, portfolio.cash, portfolio.positions, active_market
+        )
+
+        assert [pending.order for pending in queued] == [valid]
+        assert len(rejected) == 1
+        assert rejected[0].order is invalid
+        assert "invalid size" in rejected[0].reason
+        fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
+        assert len(fills) == 1
+        assert fills[0].size == 10
+        portfolio.apply_fill(fills[0])
+        assert math.isfinite(portfolio.cash)
+        assert portfolio.cash >= 0
+        assert position.yes_shares == (500 if side == Side.BUY else 0)
+
+    @pytest.mark.parametrize("side", [Side.BUY, Side.SELL])
+    @pytest.mark.parametrize("limit", [float("nan"), float("inf"), float("-inf")])
+    def test_nonfinite_limit_does_not_poison_later_orders(self, engine, active_market, side, limit):
+        portfolio = Portfolio(starting_cash=5.5)
+        position = portfolio.get_position(MARKET_5M_SLUG)
+        position.yes_shares = 490 if side == Side.BUY else 10
+        invalid = Order(MARKET_5M_SLUG, Token.YES, side, 10, limit)
+        valid = Order(MARKET_5M_SLUG, Token.YES, side, 10, 0.55 if side == Side.BUY else 0.40)
+
+        queued, rejected = engine.queue_orders(
+            [invalid, valid], 100, portfolio.cash, portfolio.positions, active_market
+        )
+
+        assert [pending.order for pending in queued] == [valid]
+        assert len(rejected) == 1
+        assert rejected[0].order is invalid
+        assert "invalid limit price" in rejected[0].reason
+        fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
+        assert len(fills) == 1
+        assert fills[0].size == 10
+        portfolio.apply_fill(fills[0])
+        assert math.isfinite(portfolio.cash)
+        assert portfolio.cash >= 0
+        assert position.yes_shares == (500 if side == Side.BUY else 0)
+
+    @pytest.mark.parametrize("side", [Side.BUY, Side.SELL])
+    def test_market_order_without_limit_remains_valid(self, engine, active_market, side):
+        positions = {MARKET_5M_SLUG: Position(MARKET_5M_SLUG, yes_shares=10)}
+        order = Order(MARKET_5M_SLUG, Token.YES, side, 10)
+
+        queued, rejected = engine.queue_orders([order], 100, 10.0, positions, active_market)
+
+        assert len(queued) == 1
+        assert rejected == []
+        fills = engine.execute_pending(101, active_market, {MARKET_5M_SLUG: 101})
+        assert len(fills) == 1
+        assert fills[0].size == 10
 
     def test_reject_insufficient_cash(self, engine, active_market):
         order = Order(MARKET_5M_SLUG, Token.YES, Side.BUY, 100, 0.52)
