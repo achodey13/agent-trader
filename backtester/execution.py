@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .strategy import (
     Fill,
@@ -108,7 +108,7 @@ class ExecutionEngine:
                 continue
 
             pending = PendingOrder(
-                order=order,
+                order=replace(order),
                 submit_tick=current_tick,
                 execute_tick=current_tick + EXECUTION_LATENCY_TICKS,
             )
